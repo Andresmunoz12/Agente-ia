@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 import database
+import os
+from dotenv import load_dotenv, set_key
+
+# Cargar variables de entorno desde .env (si existe)
+load_dotenv()
 
 # Inicializar base de datos de pedidos al arrancar la aplicación
 database.crear_tablas()
@@ -197,9 +202,11 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Credenciales de Vapi por defecto (Private API Key y Assistant ID)
-DEFAULT_PRIVATE_KEY = "1a4bf0ff-9c42-44e3-b657-dabaff62f157"
-DEFAULT_ASSISTANT_ID = "d9c26c6f-d775-488c-a3a1-7db1d851e99b"
+# Credenciales de Vapi por defecto (se leen de variables de entorno si están definidas)
+DEFAULT_PUBLIC_KEY = os.getenv("VAPI_PUBLIC_KEY", "1a4bf0ff-9c42-44e3-b657-dabaff62f157")
+DEFAULT_PRIVATE_KEY = os.getenv("VAPI_PRIVATE_KEY", DEFAULT_PUBLIC_KEY)
+DEFAULT_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "d9c26c6f-d775-488c-a3a1-7db1d851e99b")
+DEFAULT_TTS_LOCALE = os.getenv("VAPI_TTS_LOCALE", "es-ES")
 
 # Inicializar estado de llamada en la sesión de Streamlit
 if "llamando" not in st.session_state:
@@ -213,14 +220,32 @@ with col_left:
     with st.expander("⚙️ CONFIGURACIÓN DE CREDENCIALES (VAPI)"):
         st.info("⚠️ Vapi requiere tu **Public API Key** para el navegador web. Puedes encontrarla en tu panel de Vapi (Account -> API Keys).")
         vapi_key = st.text_input(
-            "Vapi Public API Key (Token Público)",
-            value=DEFAULT_PRIVATE_KEY,
-            help="Ingresa tu Public API Key para evitar el error 401 Unauthorized."
+          "Vapi Public API Key (Token Público)",
+          value=DEFAULT_PUBLIC_KEY,
+          help="Ingresa tu Public API Key para evitar el error 401 Unauthorized."
         )
         assistant_id = st.text_input(
             "Vapi Assistant ID",
             value=DEFAULT_ASSISTANT_ID
         )
+
+        tts_locale = st.selectbox("Idioma / Locale TTS:", options=["es-ES","es-419","es-MX","es-AR","es-CL","es-PE"], index=["es-ES","es-419","es-MX","es-AR","es-CL","es-PE"].index(DEFAULT_TTS_LOCALE) if DEFAULT_TTS_LOCALE in ["es-ES","es-419","es-MX","es-AR","es-CL","es-PE"] else 0)
+        
+        # Botón para guardar las credenciales en el archivo .env del servidor
+        if st.button("💾 Guardar credenciales en .env", use_container_width=True):
+            try:
+                dotenv_path = os.path.join(os.getcwd(), ".env")
+                # Escribir/actualizar las claves en .env
+                set_key(dotenv_path, "VAPI_PUBLIC_KEY", vapi_key)
+                set_key(dotenv_path, "VAPI_ASSISTANT_ID", assistant_id)
+                set_key(dotenv_path, "VAPI_TTS_LOCALE", tts_locale)
+                # Actualizar variables de entorno en memoria
+                os.environ["VAPI_PUBLIC_KEY"] = vapi_key
+                os.environ["VAPI_ASSISTANT_ID"] = assistant_id
+                os.environ["VAPI_TTS_LOCALE"] = tts_locale
+                st.success("Credenciales guardadas en .env correctamente. Reinicia la app si es necesario.")
+            except Exception as e:
+                st.error(f"Error al guardar en .env: {str(e)}")
         
         st.markdown("---")
         st.markdown("### 🗣️ Cambiar Acento / Voz del Asistente")
@@ -325,7 +350,7 @@ with col_left:
         }
         
         // 2. Definir función de inicio de llamada en el objeto window principal
-        parentWin.startVapiCall = function(apiKey, assistantId) {
+        parentWin.startVapiCall = function(apiKey, assistantId, locale) {
           console.log("[Vapi Bridge] Iniciar llamada invocado.");
           
           function updateStatus(text, borderColor, background) {
@@ -376,7 +401,7 @@ with col_left:
                     const vapiInstance = parentWin.vapiSDK.run({
                       apiKey: apiKey,
                       assistant: assistantId,
-                      config: {}
+                      config: { locale: locale || 'es-ES' }
                     });
                     
                     vapiInstance.on("call-start", () => {
@@ -606,7 +631,7 @@ if st.session_state.llamando:
         let attempts = 0;
         function triggerCall() {{
           if (window.parent && window.parent.startVapiCall) {{
-            window.parent.startVapiCall("{vapi_key}", "{assistant_id}");
+            window.parent.startVapiCall("{vapi_key}", "{assistant_id}", "{os.getenv('VAPI_TTS_LOCALE', DEFAULT_TTS_LOCALE)}");
             console.log("[Vapi Controller] Invocado startVapiCall con éxito.");
           }} else if (attempts < 20) {{
             attempts++;
